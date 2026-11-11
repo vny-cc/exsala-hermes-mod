@@ -39,9 +39,33 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOUL_FILE="${SOUL_FILE:-$SCRIPT_DIR/SOUL.md}"
 [ -f "$SOUL_FILE" ] || { echo "✗ SOUL.md tidak ada"; exit 1; }
 
+# --- Dependency Python ---
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+
+if ! "$PYTHON_BIN" -c "import ruamel.yaml" 2>/dev/null; then
+  echo "→ Menyiapkan dependency Python..."
+  VENV_DIR="${EXSALA_VENV:-$HERMES_HOME/.exsala-venv}"
+
+  if [ ! -x "$VENV_DIR/bin/python" ]; then
+    "$PYTHON_BIN" -m venv "$VENV_DIR" || {
+      echo "✗ Gagal membuat virtual environment."
+      echo "  Install python3-venv lalu ulangi."
+      exit 1
+    }
+  fi
+
+  "$VENV_DIR/bin/python" -m pip install ruamel.yaml
+  PYTHON_BIN="$VENV_DIR/bin/python"
+fi
+
+"$PYTHON_BIN" -c "import ruamel.yaml" || {
+  echo "✗ Dependency YAML tidak tersedia."
+  exit 1
+}
+
 # --- 5. Patch YAML helper ---
 patch_yaml() {
-  python3 - "$CONFIG" "$1" "$2" <<'PY'
+  "$PYTHON_BIN" - "$CONFIG" "$1" "$2" <<'PY'
 import sys, pathlib
 path, key, val = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
@@ -53,8 +77,10 @@ try:
     for p in parts[:-1]:
         if not isinstance(cur.get(p), dict): cur[p] = {}
         cur = cur[p]
-    cur[parts[-1]] = val
-    pathlib.Path(path).write_text(y.dump(c))
+    parsed = {"true": True, "false": False}.get(val.lower(), val)
+    cur[parts[-1]] = parsed
+    with pathlib.Path(path).open("w") as f:
+        y.dump(c, f)
 except ImportError:
     import yaml
     c = yaml.safe_load(pathlib.Path(path).read_text())
@@ -63,7 +89,8 @@ except ImportError:
     for p in parts[:-1]:
         if not isinstance(cur.get(p), dict): cur[p] = {}
         cur = cur[p]
-    cur[parts[-1]] = val
+    parsed = {"true": True, "false": False}.get(val.lower(), val)
+    cur[parts[-1]] = parsed
     pathlib.Path(path).write_text(yaml.dump(c, allow_unicode=True, sort_keys=False))
 PY
 }
@@ -93,7 +120,7 @@ set_field security.protected_instruction_files "false"
 set_field platforms.telegram.extra.rich_messages "true"
 set_field platforms.telegram.extra.allow_cjk_rich_messages "true"
 
-python3 - "$CONFIG" "$SOUL_FILE" <<'PY'
+"$PYTHON_BIN" - "$CONFIG" "$SOUL_FILE" <<'PY'
 import sys, pathlib
 path, soul = sys.argv[1], sys.argv[2]
 text = pathlib.Path(soul).read_text().rstrip("\n")
@@ -102,7 +129,8 @@ try:
     y = YAML(); y.preserve_quotes = True; y.width = 10**9
     c = y.load(pathlib.Path(path).read_text())
     c.setdefault("agent", {})["system_prompt"] = text
-    pathlib.Path(path).write_text(y.dump(c))
+    with pathlib.Path(path).open("w") as f:
+        y.dump(c, f)
 except ImportError:
     import yaml
     c = yaml.safe_load(pathlib.Path(path).read_text())
@@ -115,8 +143,8 @@ PY
 echo ""
 echo "→ Install skill pack..."
 SKILLS_SRC="$SCRIPT_DIR/skills"
+n=0
 if [ -d "$SKILLS_SRC" ]; then
-  n=0
   for d in "$SKILLS_SRC"/*/; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
