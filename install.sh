@@ -36,8 +36,23 @@ echo "→ hermes: ${HERMES_BIN:-TIDAK di PATH (pakai fallback python)}"
 
 # --- 4. Direktori + SOUL ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOUL_FILE="${SOUL_FILE:-$SCRIPT_DIR/SOUL.md}"
-[ -f "$SOUL_FILE" ] || { echo "✗ SOUL.md tidak ada"; exit 1; }
+SOUL_FILE="${SOUL_FILE:-}"
+
+if [ -z "$SOUL_FILE" ]; then
+  for candidate in "$SCRIPT_DIR/SOUL.md" "$HERMES_HOME/SOUL.md"; do
+    if [ -f "$candidate" ]; then
+      SOUL_FILE="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ -z "$SOUL_FILE" ] || [ ! -r "$SOUL_FILE" ]; then
+  echo "✗ SOUL.md tidak ditemukan atau tidak dapat dibaca"
+  exit 1
+fi
+
+echo "✓ SOUL.md: $SOUL_FILE"
 
 # --- Dependency Python ---
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -178,4 +193,4 @@ echo "  • skills                = $n skill"
 echo "  • model key & .env      = TIDAK disentuh"
 echo ""
 echo " → Restart: hermes  |  chat: /reset"
-echo " → Rollback: cp ~/.hermes/config.yaml.bak-exsala ~/.hermes/config.yaml"
+echo " → Rollback: cp \"$BK\" \"$CONFIG\""
