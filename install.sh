@@ -18,6 +18,68 @@ if [ ! -f "$CONFIG" ]; then
   exit 1
 fi
 
+# --- Preflight check ---
+EXSALA_CHECK_ONLY=false
+
+case "${1:-}" in
+  --check) EXSALA_CHECK_ONLY=true ;;
+  "") ;;
+  *)
+    echo "Usage: bash install.sh [--check]"
+    exit 2
+    ;;
+esac
+
+if [ "$EXSALA_CHECK_ONLY" = true ]; then
+  echo "→ EXSALA preflight (read-only)"
+  errors=0
+
+  if [ -r "$CONFIG" ]; then
+    echo "✓ Konfigurasi Hermes ditemukan"
+  else
+    echo "✗ Konfigurasi Hermes tidak dapat dibaca"
+    errors=$((errors + 1))
+  fi
+
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+  if [ -n "${SOUL_FILE:-}" ]; then
+    soul_candidate="$SOUL_FILE"
+  elif [ -r "$SCRIPT_DIR/SOUL.md" ]; then
+    soul_candidate="$SCRIPT_DIR/SOUL.md"
+  else
+    soul_candidate="$HERMES_HOME/SOUL.md"
+  fi
+
+  if [ -s "$soul_candidate" ] && [ -r "$soul_candidate" ]; then
+    echo "✓ SOUL.md tersedia dan tidak kosong"
+  else
+    echo "✗ SOUL.md tidak tersedia atau kosong"
+    errors=$((errors + 1))
+  fi
+
+  if command -v "${PYTHON_BIN:-python3}" >/dev/null 2>&1; then
+    echo "✓ Python tersedia"
+  else
+    echo "✗ Python tidak ditemukan"
+    errors=$((errors + 1))
+  fi
+
+  if [ -d "$SCRIPT_DIR/skills" ]; then
+    echo "✓ Folder skill pack tersedia"
+  else
+    echo "⚠ Folder skill pack tidak ditemukan"
+  fi
+
+  if [ "$errors" -eq 0 ]; then
+    echo "✓ Pemeriksaan dasar lulus"
+    exit 0
+  fi
+
+  echo "✗ Ditemukan $errors masalah"
+  exit 1
+fi
+
 # --- 2. Backup config ---
 BK="$CONFIG.bak-exsala"
 if [ ! -f "$BK" ]; then
