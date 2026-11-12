@@ -83,7 +83,29 @@ fi
 
 echo "PASS: konfigurasi tetap identik setelah instalasi ulang"
 
-echo "=== TEST 5: Invalid YAML ==="
+echo "=== TEST 5: Skill Conflict ==="
+
+printf 'Custom user modification\n' > "$FAKE_HOME/skills/test-skill/SKILL.md"
+
+EXSALA_SKIP_HERMES_CLI=true \
+HERMES_HOME="$FAKE_HOME" \
+SOUL_FILE="$FAKE_REPO/SOUL.md" \
+PYTHON_BIN="$PYTHON" \
+  bash "$FAKE_REPO/install.sh" > "$TEST/conflict.log" 2>&1
+
+if ! grep -q 'Custom user modification' "$FAKE_HOME/skills/test-skill/SKILL.md"; then
+  echo "FAIL: skill pengguna tertimpa"
+  exit 1
+fi
+
+if ! grep -q 'Konflik skill: test-skill' "$TEST/conflict.log"; then
+  echo "FAIL: konflik tidak dilaporkan"
+  exit 1
+fi
+
+echo "PASS: skill pengguna dipertahankan dan konflik dilaporkan"
+
+echo "=== TEST 6: Invalid YAML ==="
 printf 'agent: [invalid\n' > "$FAKE_HOME/config.yaml"
 
 if EXSALA_SKIP_HERMES_CLI=true HERMES_HOME="$FAKE_HOME" \

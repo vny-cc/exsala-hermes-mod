@@ -258,23 +258,58 @@ finally:
 
 PYCONFIG
 
-# --- 7. Install skill pack (semua skill, merge ke skills/<nama>/) ---
+# --- 7. Safe skill installation ---
 echo ""
 echo "→ Install skill pack..."
+
 SKILLS_SRC="$SCRIPT_DIR/skills"
+SKILLS_DEST="$HERMES_HOME/skills"
+
 n=0
+skipped=0
+conflicts=0
+
 if [ -d "$SKILLS_SRC" ]; then
+  mkdir -p "$SKILLS_DEST"
+
   for d in "$SKILLS_SRC"/*/; do
     [ -d "$d" ] || continue
+
     name="$(basename "$d")"
-    dest="$HERMES_HOME/skills/$name"
-    mkdir -p "$dest"
-    cp -r "$d". "$dest"
-    n=$((n+1))
+    dest="$SKILLS_DEST/$name"
+
+    if [ -e "$dest" ] || [ -L "$dest" ]; then
+      if [ -d "$dest" ] && diff -qr "$d" "$dest" >/dev/null; then
+        skipped=$((skipped + 1))
+      else
+        echo "⚠ Konflik skill: $name (tidak ditimpa)"
+        conflicts=$((conflicts + 1))
+      fi
+      continue
+    fi
+
+    tmp="$(mktemp -d "$SKILLS_DEST/.exsala-skill-XXXXXXXX")"
+
+    if ! cp -a "$d/." "$tmp/"; then
+      rm -rf -- "$tmp"
+      echo "✗ Gagal menyalin skill: $name"
+      exit 1
+    fi
+
+    if ! mv -T -- "$tmp" "$dest"; then
+      rm -rf -- "$tmp"
+      echo "✗ Gagal memasang skill: $name"
+      exit 1
+    fi
+
+    n=$((n + 1))
   done
-  echo "✓ $n skill di-install ke $HERMES_HOME/skills/"
+
+  echo "✓ Skill baru: $n"
+  echo "✓ Skill identik dilewati: $skipped"
+  echo "⚠ Konflik: $conflicts"
 else
-  echo "⚠ skills/ tidak ada — skill skip"
+  echo "⚠ skills/ tidak tersedia"
 fi
 
 # --- 8. Rebuild skill registry ---
