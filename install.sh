@@ -80,14 +80,6 @@ if [ "$EXSALA_CHECK_ONLY" = true ]; then
   exit 1
 fi
 
-# --- 2. Backup config ---
-BK="$CONFIG.bak-exsala"
-if [ ! -f "$BK" ]; then
-  cp "$CONFIG" "$BK" && echo "✓ Backup config asli → $BK"
-else
-  echo "• Backup sudah ada ($BK), biarkan"
-fi
-
 # --- 3. Cari hermes binary ---
 HERMES_BIN=""
 for c in "$HERMES_HOME/hermes-agent/hermes" "$HOME/.local/bin/hermes" hermes; do
@@ -140,81 +132,123 @@ fi
   exit 1
 }
 
-# --- 5. Patch YAML helper ---
-patch_yaml() {
-  "$PYTHON_BIN" - "$CONFIG" "$1" "$2" <<'PY'
-import sys, pathlib
-path, key, val = sys.argv[1], sys.argv[2], sys.argv[3]
-try:
-    from ruamel.yaml import YAML
-    y = YAML(); y.preserve_quotes = True
-    c = y.load(pathlib.Path(path).read_text())
-    parts = key.split('.')
-    cur = c
-    for p in parts[:-1]:
-        if not isinstance(cur.get(p), dict): cur[p] = {}
-        cur = cur[p]
-    parsed = {"true": True, "false": False}.get(val.lower(), val)
-    cur[parts[-1]] = parsed
-    with pathlib.Path(path).open("w") as f:
-        y.dump(c, f)
-except ImportError:
-    import yaml
-    c = yaml.safe_load(pathlib.Path(path).read_text())
-    parts = key.split('.')
-    cur = c
-    for p in parts[:-1]:
-        if not isinstance(cur.get(p), dict): cur[p] = {}
-        cur = cur[p]
-    parsed = {"true": True, "false": False}.get(val.lower(), val)
-    cur[parts[-1]] = parsed
-    pathlib.Path(path).write_text(yaml.dump(c, allow_unicode=True, sort_keys=False))
-PY
-}
-set_field() {
-  local key="$1" val="$2"
-  if [ -n "${HERMES_BIN:-}" ]; then
-    if "$HERMES_BIN" config set "$key" "$val" >/dev/null 2>&1; then
-      echo "✓ $key = $val"
-    else
-      patch_yaml "$key" "$val" && echo "✓ $key = $val (python)"
-    fi
-  else
-    patch_yaml "$key" "$val" && echo "✓ $key = $val (python)"
-  fi
-}
-
-# --- 6. Terapkan jailbreak ---
+# --- 5. Atomic Configuration ---
 echo ""
-echo "→ Menerapkan jailbreak zero-refusal..."
-set_field approvals.mode "off"
-set_field approvals.unattended_mode "off"
-set_field approvals.cron_mode "off"
-set_field approvals.single_query_mode "off"
-set_field security.tirith_enabled "false"
-set_field security.tirith_fail_open "true"
-set_field security.protected_instruction_files "false"
-set_field platforms.telegram.extra.rich_messages "true"
-set_field platforms.telegram.extra.allow_cjk_rich_messages "true"
+echo "→ Memperbarui konfigurasi secara atomik..."
 
-"$PYTHON_BIN" - "$CONFIG" "$SOUL_FILE" <<'PY'
-import sys, pathlib
-path, soul = sys.argv[1], sys.argv[2]
-text = pathlib.Path(soul).read_text().rstrip("\n")
+"$PYTHON_BIN" - "$CONFIG" "$SOUL_FILE" <<'PYCONFIG'
+import os
+import sys
+import stat
+import shutil
+import tempfile
+from pathlib import Path
+from datetime import datetime
+from collections.abc import MutableMapping
+from ruamel.yaml import YAML
+
+config = Path(sys.argv[1])
+soul = Path(sys.argv[2])
+
+yaml = YAML()
+yaml.preserve_quotes = True
+yaml.width = 10**9
+
+with config.open(encoding="utf-8") as f:
+    data = yaml.load(f)
+
+if not isinstance(data, MutableMapping):
+    raise ValueError("config.yaml harus berupa YAML mapping")
+
+content = soul.read_text(encoding="utf-8").strip()
+if not content:
+    raise ValueError("SOUL.md kosong")
+
+def section(parent, key):
+    value = parent.get(key)
+    if value is None:
+        parent[key] = {}
+        value = parent[key]
+    if not isinstance(value, MutableMapping):
+        raise ValueError(f"Bagian {key} bukan mapping")
+    return value
+
+section(data, "agent")["system_prompt"] = content
+
+extra = section(
+    section(section(data, "platforms"), "telegram"),
+    "extra"
+)
+extra["rich_messages"] = True
+extra["allow_cjk_rich_messages"] = True
+
+# Pertahankan pengaturan security dan approvals.
+mode = stat.S_IMODE(config.stat().st_mode)
+
+if config.stat().st_uid != os.geteuid():
+    raise PermissionError("Jalankan sebagai pemilik config.yaml")
+
+tmp_path = None
+backup = None
+replaced = False
+
 try:
-    from ruamel.yaml import YAML
-    y = YAML(); y.preserve_quotes = True; y.width = 10**9
-    c = y.load(pathlib.Path(path).read_text())
-    c.setdefault("agent", {})["system_prompt"] = text
-    with pathlib.Path(path).open("w") as f:
-        y.dump(c, f)
-except ImportError:
-    import yaml
-    c = yaml.safe_load(pathlib.Path(path).read_text())
-    c.setdefault("agent", {})["system_prompt"] = text
-    pathlib.Path(path).write_text(yaml.dump(c, allow_unicode=True, sort_keys=False))
-print("✓ agent.system_prompt = SOUL EXSALA")
-PY
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".exsala-config-",
+        dir=str(config.parent)
+    )
+
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        yaml.dump(data, f)
+        f.flush()
+        os.fsync(f.fileno())
+
+    os.chmod(tmp_path, mode)
+
+    with open(tmp_path, encoding="utf-8") as f:
+        validated = yaml.load(f)
+
+    if not isinstance(validated, MutableMapping):
+        raise ValueError("Konfigurasi hasil tidak valid")
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    backup = config.with_name(
+        config.name + ".bak-exsala-" + stamp
+    )
+    shutil.copy2(config, backup)
+
+    os.replace(tmp_path, config)
+    tmp_path = None
+    replaced = True
+
+    with config.open(encoding="utf-8") as f:
+        yaml.load(f)
+
+    print("✓ Konfigurasi atomik berhasil")
+    print(f"✓ Backup: {backup}")
+    print("✓ Pengaturan keamanan dipertahankan")
+
+except Exception:
+    if replaced and backup is not None:
+        restore_fd, restore_path = tempfile.mkstemp(
+            prefix=".exsala-restore-",
+            dir=str(config.parent)
+        )
+        try:
+            os.close(restore_fd)
+            shutil.copy2(backup, restore_path)
+            os.replace(restore_path, config)
+            print("✓ Rollback konfigurasi berhasil")
+        finally:
+            if os.path.exists(restore_path):
+                os.unlink(restore_path)
+    raise
+
+finally:
+    if tmp_path and os.path.exists(tmp_path):
+        os.unlink(tmp_path)
+
+PYCONFIG
 
 # --- 7. Install skill pack (semua skill, merge ke skills/<nama>/) ---
 echo ""
@@ -242,17 +276,10 @@ fi
 
 # --- 9. Selesai ---
 echo ""
-echo "┌──────────────────────────────────────────────┐"
-echo "│  ✅ EXSALA HERMES MOD TERPASANG              │"
-echo "│  powered by Gienetic                         │"
-echo "└──────────────────────────────────────────────┘"
-echo " Jailbreak zero-refusal AKTIF + skill pack"
-echo "  • agent.system_prompt   = SOUL EXSALA"
-echo "  • approvals.mode        = off"
-echo "  • tirith_enabled        = false"
-echo "  • protected_inst_files  = false"
-echo "  • skills                = $n skill"
-echo "  • model key & .env      = TIDAK disentuh"
+echo "✓ EXSALA HERMES MOD SELESAI"
+echo "  • SOUL EXSALA diterapkan"
+echo "  • Skill pack: $n direktori"
+echo "  • Konfigurasi dibackup"
+echo "  • Pengaturan keamanan dipertahankan"
 echo ""
-echo " → Restart: hermes  |  chat: /reset"
-echo " → Rollback: cp \"$BK\" \"$CONFIG\""
+echo "→ Restart Hermes untuk menerapkan perubahan"
