@@ -206,6 +206,13 @@ try:
 
     os.chmod(tmp_path, mode)
 
+    # Hindari backup dan penulisan ulang jika identik.
+    if Path(tmp_path).read_bytes() == config.read_bytes():
+        print("✓ Konfigurasi sudah sesuai, tidak perlu diperbarui")
+        os.unlink(tmp_path)
+        tmp_path = None
+        sys.exit(0)
+
     with open(tmp_path, encoding="utf-8") as f:
         validated = yaml.load(f)
 
