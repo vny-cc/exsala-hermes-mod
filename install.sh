@@ -82,6 +82,7 @@ fi
 
 # --- 3. Cari hermes binary ---
 HERMES_BIN=""
+EXSALA_SKIP_HERMES_CLI="${EXSALA_SKIP_HERMES_CLI:-false}"
 for c in "$HERMES_HOME/hermes-agent/hermes" "$HOME/.local/bin/hermes" hermes; do
   if [ -x "$c" ]; then HERMES_BIN="$c"; break; fi
   if command -v "$c" >/dev/null 2>&1; then HERMES_BIN="$(command -v "$c")"; break; fi
@@ -270,7 +271,7 @@ else
 fi
 
 # --- 8. Rebuild skill registry ---
-if [ -n "${HERMES_BIN:-}" ]; then
+if [ "$EXSALA_SKIP_HERMES_CLI" != "true" ] && [ -n "${HERMES_BIN:-}" ]; then
   "$HERMES_BIN" skills list >/dev/null 2>&1 && echo "✓ skill registry di-rebuild"
 fi
 

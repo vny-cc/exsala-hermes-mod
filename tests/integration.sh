@@ -32,11 +32,11 @@ if [ ! -x "$PYTHON" ]; then
 fi
 
 echo "=== TEST 1: Preflight ==="
-HERMES_HOME="$FAKE_HOME" \
+EXSALA_SKIP_HERMES_CLI=true HERMES_HOME="$FAKE_HOME" \
   bash "$FAKE_REPO/install.sh" --check
 
 echo "=== TEST 2: Install ==="
-HERMES_HOME="$FAKE_HOME" \
+EXSALA_SKIP_HERMES_CLI=true HERMES_HOME="$FAKE_HOME" \
 SOUL_FILE="$FAKE_REPO/SOUL.md" \
 PYTHON_BIN="$PYTHON" \
   bash "$FAKE_REPO/install.sh"
@@ -67,7 +67,7 @@ PY
 echo "=== TEST 4: Invalid YAML ==="
 printf 'agent: [invalid\n' > "$FAKE_HOME/config.yaml"
 
-if HERMES_HOME="$FAKE_HOME" \
+if EXSALA_SKIP_HERMES_CLI=true HERMES_HOME="$FAKE_HOME" \
    SOUL_FILE="$FAKE_REPO/SOUL.md" \
    PYTHON_BIN="$PYTHON" \
    bash "$FAKE_REPO/install.sh" > "$TEST/error.log" 2>&1; then
