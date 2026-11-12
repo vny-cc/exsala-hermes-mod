@@ -133,6 +133,48 @@ fi
   exit 1
 }
 
+# --- Installation transaction ---
+EXSALA_TX_DIR="$(mktemp -d "$HERMES_HOME/.exsala-tx.XXXXXXXX")"
+declare -a EXSALA_CREATED_SKILLS=()
+
+cp -p -- "$CONFIG" "$EXSALA_TX_DIR/config.yaml"
+
+exsala_finish() {
+  local status=$?
+  local i restore
+
+  trap - EXIT
+
+  if [ "$status" -ne 0 ]; then
+    echo "⚠ Instalasi gagal. Memulai rollback..."
+
+    for ((i=${#EXSALA_CREATED_SKILLS[@]}-1; i>=0; i--)); do
+      rm -rf -- "${EXSALA_CREATED_SKILLS[i]}" ||
+        echo "⚠ Gagal menghapus skill baru"
+    done
+
+    restore="$(mktemp "$HERMES_HOME/.exsala-restore.XXXXXXXX")"
+
+    if cp -p -- "$EXSALA_TX_DIR/config.yaml" "$restore" &&
+       mv -f -- "$restore" "$CONFIG"; then
+      echo "✓ Konfigurasi dipulihkan"
+    else
+      echo "✗ Pemulihan gagal. Periksa backup transaksi." >&2
+      echo "  $EXSALA_TX_DIR/config.yaml" >&2
+      exit "$status"
+    fi
+
+    echo "✓ Rollback selesai"
+  fi
+
+  rm -rf -- "$EXSALA_TX_DIR"
+  exit "$status"
+}
+
+trap exsala_finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 # --- 5. Atomic Configuration ---
 echo ""
 echo "→ Memperbarui konfigurasi secara atomik..."
@@ -302,6 +344,7 @@ if [ -d "$SKILLS_SRC" ]; then
       exit 1
     fi
 
+    EXSALA_CREATED_SKILLS+=("$dest")
     n=$((n + 1))
   done
 
