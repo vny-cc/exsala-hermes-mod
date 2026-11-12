@@ -64,7 +64,26 @@ assert (home / "skills/test-skill/SKILL.md").exists()
 print("PASS: konfigurasi, keamanan, backup, permission, skill")
 PY
 
-echo "=== TEST 4: Invalid YAML ==="
+echo "=== TEST 4: Idempotency ==="
+
+BEFORE="$(sha256sum "$FAKE_HOME/config.yaml" | cut -d ' ' -f1)"
+
+EXSALA_SKIP_HERMES_CLI=true \
+HERMES_HOME="$FAKE_HOME" \
+SOUL_FILE="$FAKE_REPO/SOUL.md" \
+PYTHON_BIN="$PYTHON" \
+  bash "$FAKE_REPO/install.sh"
+
+AFTER="$(sha256sum "$FAKE_HOME/config.yaml" | cut -d ' ' -f1)"
+
+if [ "$BEFORE" != "$AFTER" ]; then
+  echo "FAIL: konfigurasi berubah setelah instalasi ulang"
+  exit 1
+fi
+
+echo "PASS: konfigurasi tetap identik setelah instalasi ulang"
+
+echo "=== TEST 5: Invalid YAML ==="
 printf 'agent: [invalid\n' > "$FAKE_HOME/config.yaml"
 
 if EXSALA_SKIP_HERMES_CLI=true HERMES_HOME="$FAKE_HOME" \
