@@ -3,3 +3,5 @@
 secret*
 *.log
 output/
+__pycache__/
+*.py[cod]

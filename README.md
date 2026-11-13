@@ -67,13 +67,13 @@ Requirements: Linux VPS/server with Hermes Agent (≥ 0.22), `bash`, `python3`, 
 ### One-line
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/giienew/exsala-hermes-mod/main/install.sh)
+git clone https://github.com/vny-cc/exsala-hermes-mod.git && bash exsala-hermes-mod/install.sh
 ```
 
 ### Manual
 
 ```bash
-git clone https://github.com/giienew/exsala-hermes-mod.git
+git clone https://github.com/vny-cc/exsala-hermes-mod.git
 cd exsala-hermes-mod
 bash install.sh
 ```
@@ -106,11 +106,53 @@ bash install.sh
 - **Idempotent** — re-running is safe; backup is never overwritten.
 - Falls back to Python YAML patching if `hermes` isn't on PATH.
 
+### Automatic Hermes reasoning compatibility fix
+
+Every install checks the Hermes source for the known bug that sends both
+`reasoning` and `reasoning_content` to remote `custom` providers. Some upstream
+parsers treat these as aliases and reject the request with HTTP 400:
+`duplicate field reasoning_content`.
+
+- If the known bug is present, remove only `custom` from the local-provider
+  carrier list. Remote custom endpoints then use the default `reasoning_content`
+  carrier; local endpoint detection stays intact.
+- If that pattern is absent, skip without changing the source. This check detects
+  the known source pattern; it does not make a paid API request or guarantee that
+  a provider has no other compatibility issues.
+- Missing source or an unfamiliar source layout is reported and skipped.
+- The original source is saved once as
+  `agent/message_sanitization.py.bak-exsala-reasoning` beside the patched file.
+  To undo, copy that backup over `message_sanitization.py`, then restart Hermes.
+
+The default source location is `$HERMES_HOME/hermes-agent`, falling back to
+`$HOME/.hermes/hermes-agent` for profile installs. For another checkout:
+
+```bash
+HERMES_SOURCE_DIR=/path/to/hermes-agent bash install.sh
+```
+
+To inspect without changing anything:
+
+```bash
+python3 scripts/fix_reasoning_alias.py /path/to/hermes-agent --check
+```
+
+**After a patch, restart the gateway and reopen Hermes.** `/new` and `/reset`
+start a new session but do not reload Python code in a running gateway:
+
+```bash
+hermes gateway restart --detach
+```
+
+The installer does not interrupt running gateway work automatically. Hermes
+updates can overwrite this local patch; rerun the installer or the helper after
+an update to check again.
+
 ---
 
 ## After install
 
-1. Restart Hermes (new session, e.g. `/reset`).
+1. Restart the gateway with `hermes gateway restart --detach`, then reopen Hermes.
 2. The EXSALA banner appears.
 3. The skill pack is active — any of the 172 skills can be invoked by name.
 
