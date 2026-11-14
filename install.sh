@@ -135,7 +135,20 @@ if [ -n "${HERMES_BIN:-}" ]; then
   "$HERMES_BIN" skills list >/dev/null 2>&1 && echo "✓ skill registry di-rebuild"
 fi
 
-# --- 9. Selesai ---
+# --- 9. Cek + fix bug reasoning alias pada Hermes yang masih terdampak ---
+echo ""
+echo "→ Cek kompatibilitas reasoning provider custom..."
+if [ -z "${HERMES_SOURCE_DIR:-}" ]; then
+  HERMES_SOURCE_DIR="$HERMES_HOME/hermes-agent"
+  if [ ! -d "$HERMES_SOURCE_DIR/agent" ] && [ -d "$HOME/.hermes/hermes-agent/agent" ]; then
+    HERMES_SOURCE_DIR="$HOME/.hermes/hermes-agent"
+  fi
+fi
+python3 "$SCRIPT_DIR/scripts/fix_reasoning_alias.py" "$HERMES_SOURCE_DIR"
+python3 "$SCRIPT_DIR/scripts/fix_compression.py" "$HERMES_SOURCE_DIR" \
+  --config "$CONFIG" --log "$HERMES_HOME/logs/agent.log"
+
+# --- 10. Selesai ---
 echo ""
 echo "┌──────────────────────────────────────────────┐"
 echo "│  ✅ EXSALA HERMES MOD TERPASANG              │"
@@ -149,5 +162,6 @@ echo "  • protected_inst_files  = false"
 echo "  • skills                = $n skill"
 echo "  • model key & .env      = TIDAK disentuh"
 echo ""
-echo " → Restart: hermes  |  chat: /reset"
+echo " → Restart gateway: hermes gateway restart --detach"
+echo " → Buka ulang Hermes; /new atau /reset saja tidak memuat patch kode"
 echo " → Rollback: cp ~/.hermes/config.yaml.bak-exsala ~/.hermes/config.yaml"
