@@ -114,6 +114,44 @@ bash install.sh
 2. The EXSALA banner appears.
 3. The skill pack is active — any of the 172 skills can be invoked by name.
 
+## Fresh VPS recovery with Herdr
+
+`bootstrap-vps.sh` is a separate recovery entry point for the owner's private
+`vny-cc/hermes-backup` repository. It supports a **fresh Ubuntu/Debian VPS,
+logged in as root, with systemd and an interactive SSH terminal**. It refuses
+to overwrite an existing Hermes configuration. It is not an installer for a
+Codespace or a migration command to run on the currently active VPS.
+
+The bootstrap installs dependencies and Herdr, asks for GitHub device login,
+clones the private backup tooling, then opens recovery inside a persistent
+Herdr pane. Paste only the `AGE-SECRET-KEY-...` line from your recovery key when
+prompted; input is hidden. Never put the key in the command line or a public URL.
+
+Recovery verifies the newest complete encrypted snapshot, installs the Hermes
+commit recorded in it, applies the recorded local source patch, restores Hermes
+data, installs Herdr's Hermes integration, and starts the system gateway plus
+the 15-minute backup timer. It checks the first backup before opening Hermes.
+The restored cron definitions become active with the gateway: use this on the
+replacement VPS after the old gateway is no longer running.
+
+Once recovery is complete, reconnect with `hermes-herdr`. Herdr keeps pane
+processes running through an SSH disconnect; it still depends on the VPS being
+up. Only files present in the Hermes backup can be restored. External project
+folders (for example `/root/farming`) and old Herdr pane layouts are not in the
+current backup scope.
+
+Preview without installing or restoring anything:
+
+```bash
+bash bootstrap-vps.sh --plan
+```
+
+This flow has automated tests with stubbed installers and staged restore tests;
+it has not been exercised end to end on a separate empty VPS. If a step fails,
+the recovered staging directory is kept for inspection and Hermes is not
+opened automatically. The fresh-VPS guard also blocks a blind rerun after a
+partially completed Hermes installation.
+
 ## Project layout
 
 ```
