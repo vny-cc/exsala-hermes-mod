@@ -77,6 +77,26 @@ def patch_source(text):
     return "patched", patched
 
 
+def write_with_backup(path, text, suffix):
+    """Replace a source/config file atomically, preserving the first backup."""
+    backup = path.with_name(path.name + suffix)
+    try:
+        with backup.open("xb") as output:
+            output.write(path.read_bytes())
+    except FileExistsError:
+        pass
+    fd, name = tempfile.mkstemp(prefix=".exsala-fix-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as output:
+            output.write(text)
+        shutil.copymode(path, name)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+    return backup
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source_dir", type=Path, help="Hermes source checkout")
@@ -94,21 +114,7 @@ def main():
     elif args.check:
         print("⚠ Reasoning fix: pola bug ditemukan (--check; belum diubah)")
     else:
-        backup = path.with_name(path.name + ".bak-exsala-reasoning")
-        try:
-            with backup.open("xb") as output:
-                output.write(path.read_bytes())
-        except FileExistsError:
-            pass
-        fd, name = tempfile.mkstemp(prefix=".exsala-reasoning-", dir=path.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as output:
-                output.write(patched)
-            shutil.copymode(path, name)
-            os.replace(name, path)
-        finally:
-            if os.path.exists(name):
-                os.unlink(name)
+        backup = write_with_backup(path, patched, ".bak-exsala-reasoning")
         print(f"✓ Reasoning fix: pola bug ditemukan dan diperbaiki; backup: {backup}")
         print("→ Restart proses Hermes DAN gateway agar patch dimuat; /new saja tidak cukup")
 

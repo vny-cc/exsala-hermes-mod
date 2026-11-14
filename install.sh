@@ -145,6 +145,8 @@ if [ -z "${HERMES_SOURCE_DIR:-}" ]; then
   fi
 fi
 python3 "$SCRIPT_DIR/scripts/fix_reasoning_alias.py" "$HERMES_SOURCE_DIR"
+python3 "$SCRIPT_DIR/scripts/fix_compression.py" "$HERMES_SOURCE_DIR" \
+  --config "$CONFIG" --log "$HERMES_HOME/logs/agent.log"
 
 # --- 10. Selesai ---
 echo ""

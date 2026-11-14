@@ -148,6 +148,39 @@ The installer does not interrupt running gateway work automatically. Hermes
 updates can overwrite this local patch; rerun the installer or the helper after
 an update to check again.
 
+### Compression and context overflow fixes
+
+The installer also checks `agent/turn_preflight.py` for the known branch that
+continues sending unchanged history after losing the session compression lock.
+For that exact layout, it applies a soft defer: no provider request, no spent
+iteration, and no session reset while another worker summarizes the session.
+Unknown layouts are skipped. Already patched layouts are left unchanged.
+
+When that patch is recognized, the installer raises
+`compression.hygiene_max_turn_hold_seconds` to at least 120 seconds. This gives
+gateway hygiene summaries more time to finish before the user turn continues.
+A higher existing setting is preserved.
+
+Context limits are **not hardcoded for every model**. If `logs/agent.log`
+contains an HTTP 400 `context_length` error matching the configured provider,
+endpoint and model exactly, the latest reported limit is used to set or lower
+`model.context_length`. Lower existing limits are preserved. Fresh installs
+without a matching error keep their model context setting; rerun the installer
+after such an error to learn the provider's actual limit.
+
+```bash
+python3 scripts/fix_compression.py /path/to/hermes-agent \
+  --config "$HOME/.hermes/config.yaml" \
+  --log "$HOME/.hermes/logs/agent.log" --check
+```
+
+Remove `--check` to apply the detected changes. Source and config each get a
+first-write backup with suffix `.bak-exsala-compression`. Restore the respective
+backup to undo those changes, then restart Hermes and its gateway. Existing
+API keys and model routing are preserved; no provider request is made by these
+checks. A recorded limit is evidence from that endpoint at the time of the
+error, so review the setting if you later change its upstream model mapping.
+
 ---
 
 ## After install
@@ -162,6 +195,8 @@ an update to check again.
 exsala-hermes-mod/
 ├── install.sh
 ├── SOUL.md
+├── scripts/         # check-before-patch Hermes compatibility helpers
+├── tests/           # python3 -m unittest discover -s tests -v
 ├── skills/          # 172 skill dirs
 └── README.md
 ```
